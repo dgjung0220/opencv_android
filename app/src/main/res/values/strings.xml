@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">project1</string>
+    <string name="app_name">Android_Opencv</string>
 
     <string name="menu_next_camera">NEXT CAM</string>
     <string name="menu_take_photo">TAKE PHOTO</string>
@@ -13,6 +13,8 @@
     <string name="photo_delete_prompt_title">Delete photo? </string>
     <string name="photo_edit_chooser_title">Edit photo with&#8230; </string>
     <string name="photo_send_chooser_title">Share photo with&#8230; </string>
+
+    <string name="photo_error_message">Failed to save photo</string>
 
     <string name="photo_send_extra_subject">My photo from project1</string>
     <string name="photo_send_extra_text">Check out my photo from the project1 app. </string>
