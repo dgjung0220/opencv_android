@@ -34,7 +34,6 @@ import android.widget.Toast;
 
 import org.opencv.android.BaseLoaderCallback;
 import org.opencv.android.CameraBridgeViewBase;
-import org.opencv.android.JavaCamera2View;
 import org.opencv.android.JavaCameraView;
 import org.opencv.android.LoaderCallbackInterface;
 import org.opencv.android.OpenCVLoader;
@@ -44,6 +43,7 @@ import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
 
 import java.io.File;
+import java.io.IOException;
 
 
 /**
@@ -55,11 +55,15 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
     private static final String TAG = CameraActivity.class.getSimpleName();
     private Context context;
 
+    private static final String STATE_IMAGE_DETECTION_FILTER_INDEX = "imageDetectionIndexFilterIndex";
     private static final String STATE_CAMERA_INDEX = "cameraIndex";
     private static final String STATE_IMAGE_SIZE_INDEX = "imageSizeIndex";
 
     private static final int MENU_GROUP_ID_SIZE = 2;
 
+    private Filter[] mImageDetectionFilters;
+
+    private int mImageDetectionFilterIndex;
     private int mCameraIndex;
     private int mImageSizeIndex;
 
@@ -96,6 +100,32 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
 
                     mCameraView.enableView();
                     mBgr = new Mat();
+
+                    final Filter starryNight;
+                    try {
+                        starryNight = new ImageDetectionFilter(CameraActivity.this, "/mnt/sdcard/Assets/starry_night.jpg");
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                        break;
+                    }
+
+                    final Filter portrait;
+                    try {
+                        portrait = new ImageDetectionFilter(CameraActivity.this, "/mnt/sdcard/Assets/self_portrait.jpg");
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                        break;
+                    }
+
+                    final Filter book;
+                    try {
+                        book = new ImageDetectionFilter(CameraActivity.this, "/mnt/sdcard/Assets/book.jpg");
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                        break;
+                    }
+                    mImageDetectionFilters = new Filter[] { new NoneFilter(), starryNight, portrait, book};
+
                     break;
                 default:
                     super.onManagerConnected(status);
@@ -125,9 +155,11 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
         if (savedInstanceState != null) {
             mCameraIndex = savedInstanceState.getInt(STATE_CAMERA_INDEX, 0);
             mImageSizeIndex = savedInstanceState.getInt(STATE_IMAGE_SIZE_INDEX, 0);
+            mImageDetectionFilterIndex = savedInstanceState.getInt(STATE_IMAGE_DETECTION_FILTER_INDEX, 0);
         } else {
             mCameraIndex = 0;
             mImageSizeIndex = 0;
+            mImageDetectionFilterIndex = 0;
         }
 
         initializeCameraSetting();
@@ -141,6 +173,7 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
     public void onSaveInstanceState(Bundle savedInstanceState) {
         savedInstanceState.putInt(STATE_CAMERA_INDEX, mCameraIndex);
         savedInstanceState.putInt(STATE_IMAGE_SIZE_INDEX, mImageSizeIndex);
+        savedInstanceState.putInt(STATE_IMAGE_DETECTION_FILTER_INDEX, mImageDetectionFilterIndex);
 
         super.onSaveInstanceState(savedInstanceState);
     }
@@ -209,6 +242,13 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
         }
 
         switch(item.getItemId()) {
+            case R.id.menu_next_image_detection_filter:
+                mImageDetectionFilterIndex++;
+                if (mImageDetectionFilterIndex == mImageDetectionFilters.length) {
+                    mImageDetectionFilterIndex = 0;
+                }
+                return true;
+
             case R.id.menu_next_camera:
                 mIsMenuLocked = true;
 
@@ -314,6 +354,10 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
     @Override
     public Mat onCameraFrame(CameraBridgeViewBase.CvCameraViewFrame inputFrame) {
         final Mat rgba = inputFrame.rgba();
+
+        if (mImageDetectionFilters != null) {
+            mImageDetectionFilters[mImageDetectionFilterIndex].apply(rgba, rgba);
+        }
 
         if (mIsPhotoPending) {
             mIsPhotoPending = false;
