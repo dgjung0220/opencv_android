@@ -10,6 +10,7 @@ import android.os.Bundle;
 import android.provider.MediaStore;
 import android.support.annotation.Nullable;
 import android.support.v7.app.AppCompatActivity;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.ImageView;
@@ -19,6 +20,8 @@ import android.widget.ImageView;
  */
 
 public class LabActivity extends AppCompatActivity {
+
+    private static final String TAG = CameraActivity.class.getSimpleName();
 
     public static final String PHOTO_FILE_EXTENSION = ".png";
     public static final String PHOTO_MIME_TYPE = "image/png";
@@ -52,6 +55,11 @@ public class LabActivity extends AppCompatActivity {
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         switch (item.getItemId()) {
+            case R.id.menu_tracking:
+                Intent i = new Intent(this, CameraActivity.class);
+                i.putExtra(EXTRA_PHOTO_DATA_PATH, mDataPath);
+                startActivity(i);
+                return true;
             case R.id.menu_delete:
                 deletePhoto();
                 return true;

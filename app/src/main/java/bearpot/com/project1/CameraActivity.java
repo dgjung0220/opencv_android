@@ -1,18 +1,18 @@
 package bearpot.com.project1;
 
 import android.Manifest;
-import android.app.Activity;
 import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.database.Cursor;
 import android.graphics.ImageFormat;
-import android.hardware.Camera;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.params.StreamConfigurationMap;
+import android.media.ExifInterface;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -23,10 +23,12 @@ import android.support.annotation.RequiresApi;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
+import android.util.DisplayMetrics;
 import android.util.Log;
 import android.util.Size;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.MotionEvent;
 import android.view.SubMenu;
 import android.view.Window;
 import android.view.WindowManager;
@@ -39,15 +41,26 @@ import org.opencv.android.LoaderCallbackInterface;
 import org.opencv.android.OpenCVLoader;
 import org.opencv.core.Core;
 import org.opencv.core.Mat;
+import org.opencv.core.MatOfFloat;
+import org.opencv.core.MatOfInt;
+import org.opencv.core.Point;
+import org.opencv.core.Rect;
+import org.opencv.core.RotatedRect;
+import org.opencv.core.Scalar;
+import org.opencv.core.TermCriteria;
 import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
+import org.opencv.video.Video;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.LinkedList;
+import java.util.List;
 
 
 /**
- * Created by dgjun on 2018-03-20.
+ * Created by dgjung on 2018-03-20.
  */
 
 public class CameraActivity extends AppCompatActivity implements CameraBridgeViewBase.CvCameraViewListener2 {
@@ -77,6 +90,31 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
     private Mat mBgr;
     private boolean mIsMenuLocked;
 
+    // 스크린 사이즈
+    private int width;
+    private int height;
+    private Rect roi;
+    private Point A;
+    private Point B;
+    public static Mat scene_corners;
+
+    private Intent intent;
+    private String target;
+    private Filter target_filter;
+
+    private int mViewMode;
+
+    private final int NORMAL_MODE = 0;
+    private final int DETECTING_MODE= 1;
+    private final int TRACKING_MODE = 2;
+
+    private boolean SELECTED_OBJ = false;
+
+    private Rect selection = null;
+    private Mat hsv, mask, hue, backproj, hist;
+    private Rect trackWindow;
+    private int trackObject = 0;
+
     private boolean hasPermissions(String[] permissions) {
         int result;
         for (String perms : permissions) {
@@ -101,7 +139,17 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
                     mCameraView.enableView();
                     mBgr = new Mat();
 
-                    final Filter starryNight;
+                    if (target != null) {
+                        try {
+                            target_filter = new ImageDetectionFilter(CameraActivity.this, target);
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+
+                        mViewMode = DETECTING_MODE;
+                    }
+
+                    /*final Filter starryNight;
                     try {
                         starryNight = new ImageDetectionFilter(CameraActivity.this, "/mnt/sdcard/Assets/starry_night.jpg");
                     } catch (IOException e) {
@@ -123,8 +171,8 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
                     } catch (IOException e) {
                         e.printStackTrace();
                         break;
-                    }
-                    mImageDetectionFilters = new Filter[] { new NoneFilter(), starryNight, portrait, book};
+                    }*/
+                    //mImageDetectionFilters = new Filter[] {new NoneFilter()};
 
                     break;
                 default:
@@ -163,6 +211,23 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
         }
 
         initializeCameraSetting();
+
+        DisplayMetrics mDisplayMetrics = getApplicationContext().getResources().getDisplayMetrics();
+        width = mDisplayMetrics.widthPixels;
+        height = mDisplayMetrics.heightPixels;
+        int patternWidth = (int) (Math.min(width, height) * 0.8f);
+        A = new Point(width / 2 - patternWidth / 2, height / 2 - patternWidth /2);
+        B = new Point(width - patternWidth, height - patternWidth /2);
+
+        intent = getIntent();
+        if (intent != null) {
+            target = intent.getStringExtra(LabActivity.EXTRA_PHOTO_DATA_PATH);
+            Log.d(TAG, ""+target);
+        }
+
+        roi = new Rect((int)A.x,(int)A.y,(int)(B.x-A.x),(int)(B.y-A.y));
+
+        mViewMode = NORMAL_MODE;
     }
 
     @Override
@@ -243,10 +308,7 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
 
         switch(item.getItemId()) {
             case R.id.menu_next_image_detection_filter:
-                mImageDetectionFilterIndex++;
-                if (mImageDetectionFilterIndex == mImageDetectionFilters.length) {
-                    mImageDetectionFilterIndex = 0;
-                }
+                mViewMode = NORMAL_MODE;
                 return true;
 
             case R.id.menu_next_camera:
@@ -264,10 +326,79 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
                 mIsMenuLocked = true;
                 mIsPhotoPending = true;
                 return true;
+
+            case R.id.menu_receive:
+                Intent intent = new Intent(Intent.ACTION_PICK);
+                intent.setData(MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
+                intent.setType("image/*");
+                startActivityForResult(intent, 1112);
+
             default:
                 return super.onOptionsItemSelected(item);
         }
     }
+
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+
+        if (resultCode == RESULT_OK) {
+            switch (requestCode) {
+                case 1112:
+                    sendPicture(data.getData()); //갤러리에서 가져오기
+                    break;
+
+                default:
+                    break;
+            }
+        }
+    }
+
+    private void sendPicture(Uri imgUri) {
+
+        String imagePath = getRealPathFromURI(imgUri);
+        ExifInterface exif = null;
+
+        try {
+            exif = new ExifInterface(imagePath);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        int exifOrientation = exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL);
+        int exifDegree = exifOrientationToDegrees(exifOrientation);
+
+        try {
+            target_filter = new ImageDetectionFilter(CameraActivity.this, imagePath);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        mViewMode = DETECTING_MODE;
+
+        //Bitmap bitmap = BitmapFactory.decodeFile(imagePath);//경로를 통해 비트맵으로 전환
+        //ivImage.setImageBitmap(rotate(bitmap, exifDegree));//이미지 뷰에 비트맵 넣기
+    }
+
+    private int exifOrientationToDegrees(int exifOrientation) {
+        if (exifOrientation == ExifInterface.ORIENTATION_ROTATE_90) {
+            return 90;
+        } else if (exifOrientation == ExifInterface.ORIENTATION_ROTATE_180) {
+            return 180;
+        } else if (exifOrientation == ExifInterface.ORIENTATION_ROTATE_270) {
+            return 270;
+        }
+        return 0;
+    }
+
+    private String getRealPathFromURI(Uri contentUri) {
+        int column_index=0;
+        String[] proj = {MediaStore.Images.Media.DATA};
+        Cursor cursor = getContentResolver().query(contentUri, proj, null, null, null);
+        if(cursor.moveToFirst()){
+            column_index = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA);
+        }
+
+        return cursor.getString(column_index);
+    }
+
 
     private CameraDevice.StateCallback mStateCallback = new CameraDevice.StateCallback() {
 
@@ -289,28 +420,6 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
 
     @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
     private void initializeCameraSetting() {
-        /*
-        android.hardware.camera, deprecated.... use camera2 instead.
-
-        Camera.CameraInfo cameraInfo = new Camera.CameraInfo();
-        Camera.getCameraInfo(mCameraIndex, cameraInfo);
-
-        mIsCameraFrontFacing = (cameraInfo.facing == Camera.CameraInfo.CAMERA_FACING_FRONT);
-        mNumCameras = Camera.getNumberOfCameras();
-        final Camera camera = Camera.open(mCameraIndex);
-
-        final Camera.Parameters parameters = camera.getParameters();
-        camera.release();
-
-        mSupportedImageSizes = parameters.getSupportedPreviewSizes();
-        final Camera.Size size = mSupportedImageSizes.get(mImageSizeIndex);
-
-        mCameraView = new JavaCameraView(this, mCameraIndex);
-        mCameraView.setMaxFrameSize(size.width, size.height);
-        mCameraView.setCvCameraViewListener(this);
-        setContentView(mCameraView);
-        */
-
         /*
         android.hardware.camera2
          */
@@ -343,7 +452,12 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
 
     @Override
     public void onCameraViewStarted(int width, int height) {
-
+        hsv = new Mat();
+        hue = new Mat();
+        mask = new Mat();
+        hist = new Mat();
+        backproj = new Mat();
+        trackWindow = new Rect();
     }
 
     @Override
@@ -355,19 +469,79 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
     public Mat onCameraFrame(CameraBridgeViewBase.CvCameraViewFrame inputFrame) {
         final Mat rgba = inputFrame.rgba();
 
-        if (mImageDetectionFilters != null) {
-            mImageDetectionFilters[mImageDetectionFilterIndex].apply(rgba, rgba);
+        switch (mViewMode) {
+            case NORMAL_MODE:
+                new NoneFilter().apply(rgba, rgba);
+                Imgproc.rectangle(rgba, A , B, ScalarColors.GREEN,10,8,0);
+
+                if (mIsPhotoPending) {
+                    mIsPhotoPending = false;
+                    takePhoto(rgba);
+                }
+
+                if (mIsCameraFrontFacing) {
+                    Core.flip(rgba, rgba, 1);
+                }
+                break;
+
+            case DETECTING_MODE:
+                Imgproc.rectangle(rgba, A , B, ScalarColors.GREEN,10,8,0);
+                target_filter.apply(rgba, rgba);
+                break;
+
+            case TRACKING_MODE:
+                camShift(rgba);
+                break;
         }
 
-        if (mIsPhotoPending) {
-            mIsPhotoPending = false;
-            takePhoto(rgba);
-        }
-
-        if (mIsCameraFrontFacing) {
-            Core.flip(rgba, rgba, 1);
-        }
         return rgba;
+    }
+
+    private void camShift(Mat rgba) {
+        Imgproc.cvtColor(rgba, hsv, Imgproc.COLOR_BGR2HSV);
+
+        if (trackObject != 0) {
+            int vmin = 10;
+            int vmax = 256;
+            int smin = 30;
+
+            Core.inRange(hsv, new Scalar(0, smin, Math.min(vmin, vmax)), new Scalar(180, 256, Math.max(vmin, vmax)), mask);
+            hue.create(hsv.size(), hsv.depth());
+
+            List<Mat> hueList = new LinkedList<Mat>();
+            List<Mat> hsvList = new LinkedList<Mat>();
+            hsvList.add(hsv);
+            hueList.add(hue);
+
+            MatOfInt ch = new MatOfInt(0, 0);
+            Core.mixChannels(hsvList, hueList, ch);
+            MatOfFloat histRange = new MatOfFloat(0, 180);
+
+            if (trackObject < 0) {
+                Mat subHue = hue.submat(selection);
+
+                Imgproc.calcHist(Arrays.asList(subHue), new MatOfInt(0), new Mat(), hist, new MatOfInt(16), histRange);
+                Core.normalize(hist, hist, 0, 255, Core.NORM_MINMAX);
+                trackWindow = selection;
+                trackObject = 1;
+            }
+
+            MatOfInt ch2 = new MatOfInt(0,1);
+            Imgproc.calcBackProject(Arrays.asList(hue), ch2, hist, backproj, histRange, 1);
+
+            Core.bitwise_and(backproj, mask, backproj);
+            RotatedRect trackBox = Video.CamShift(backproj, trackWindow, new TermCriteria(TermCriteria.EPS | TermCriteria.MAX_ITER, 10,1));
+
+            Imgproc.ellipse(rgba, trackBox, new Scalar(0,0,255),4);
+
+            if (trackWindow.area() <= 1) {
+                trackObject = 0;
+            }
+
+            if (selection != null) {
+                Imgproc.rectangle(rgba, selection.tl(), selection.br(), new Scalar(0,255, 255),2);
+            }
+        }
     }
 
     private void takePhoto(final Mat rgba) {
@@ -392,10 +566,17 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
         }
 
         Imgproc.cvtColor(rgba, mBgr, Imgproc.COLOR_RGB2BGR, 3);
-        if (!Imgcodecs.imwrite(photoPath, mBgr)) {
+        Mat cropped = new Mat(mBgr, roi);
+        if (!Imgcodecs.imwrite(photoPath, cropped)) {
             Log.e(TAG, "Failed to save photo to " + photoPath);
             onTakePhotoFailed();
         }
+
+        /* Not Cropped.
+        if (!Imgcodecs.imwrite(photoPath, mBgr)) {
+            Log.e(TAG, "Failed to save photo to " + photoPath);
+            onTakePhotoFailed();
+        }*/
 
         Uri uri;
         try {
@@ -429,5 +610,40 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
                 Toast.makeText(CameraActivity.this, errorMessage, Toast.LENGTH_SHORT).show();
             }
         });
+    }
+
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        if (scene_corners != null) {
+            mViewMode = TRACKING_MODE;
+        }
+
+        if (mViewMode == TRACKING_MODE) {
+
+            selection = new Rect((int) scene_corners.get(0,0)[0], (int) scene_corners.get(0,0)[1],
+                    (int) Math.abs(scene_corners.get(0,0)[0] - scene_corners.get(1,0)[0]),
+                    (int) Math.abs(scene_corners.get(0,0)[1] - scene_corners.get(3,0)[1]));
+
+            SELECTED_OBJ = true;
+            trackObject = -1;
+
+            if (SELECTED_OBJ) {
+                selection.x = (int) scene_corners.get(0,0)[0];
+                selection.y = (int) scene_corners.get(0,0)[1];
+
+                int width = subsTwoD(new Point(scene_corners.get(0,0)), new Point(scene_corners.get(1,0)));
+                int height = subsTwoD(new Point(scene_corners.get(3,0)), new Point(scene_corners.get(0,0)));
+
+                selection.width = width;
+                selection.height = height;
+            }
+        }
+
+        return super.onTouchEvent(event);
+    }
+
+    public int subsTwoD(Point a, Point b) {
+        int result = (int) Math.abs(Math.sqrt(Math.pow((a.x-b.x),2) + Math.pow((a.y-b.y),2)));
+        return result;
     }
 }

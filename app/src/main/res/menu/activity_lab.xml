@@ -2,6 +2,10 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <item
+        android:id="@+id/menu_tracking"
+        app:showAsAction="always|withText"
+        android:title="TRACKING"/>
+    <item
         android:id="@+id/menu_delete"
         app:showAsAction="ifRoom|withText"
         android:title="@string/delete"/>

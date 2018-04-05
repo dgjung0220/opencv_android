@@ -24,6 +24,7 @@ import org.opencv.imgproc.Imgproc;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.List;
 
 /**
@@ -45,16 +46,23 @@ public class ImageDetectionFilter implements Filter {
     private final Mat mSceneCorners = new Mat(4, 1, CvType.CV_32FC2);
     private final MatOfPoint mIntSceneCorners = new MatOfPoint();
 
-    private Mat mGraySrc = new Mat();
+    private final Mat mGraySrc = new Mat();
+    private final Mat mWarpedSrc = new Mat();
+
     private final MatOfDMatch mMatches = new MatOfDMatch();
+    private LinkedList<MatOfDMatch> m_knnMatches;
+
+    private final Mat rough_homography = new Mat();
+    private final Mat refine_homography = new Mat();
 
     private ORB orb = ORB.create();
     private final DescriptorMatcher mDescriptorMatcher = DescriptorMatcher.create(DescriptorMatcher.BRUTEFORCE_HAMMINGLUT);
 
     public ImageDetectionFilter(final Context context, final String filePath) throws IOException {
-        //mReferenceImage = Utils.loadResource(context, referenceImageResourceID, Imgcodecs.CV_LOAD_IMAGE_COLOR);
-        //mReferenceImage = Imgcodecs.imread("/mnt/sdcard/Assets/starry_night.jpg");
         mReferenceImage = Imgcodecs.imread(filePath);
+
+        orb.setMaxFeatures(1000);
+        m_knnMatches = new LinkedList<>();
 
         final Mat referenceImageGray = new Mat();
         Imgproc.cvtColor(mReferenceImage, referenceImageGray, Imgproc.COLOR_BGR2GRAY);
@@ -63,7 +71,7 @@ public class ImageDetectionFilter implements Filter {
         mReferenceCorners.put(0, 0, new double[]{0.0, 0.0});
         mReferenceCorners.put(1, 0, new double[]{referenceImageGray.cols(), 0.0});
         mReferenceCorners.put(2, 0, new double[]{referenceImageGray.cols(), referenceImageGray.rows()});
-        mReferenceCorners.put(3, 0, new double[]{0.0, mReferenceCorners.rows()});
+        mReferenceCorners.put(3, 0, new double[]{0.0, referenceImageGray.rows()});
 
         orb.detectAndCompute(referenceImageGray, new Mat(), mReferenceKeypoints, mReferenceDescriptors);
     }
@@ -72,8 +80,8 @@ public class ImageDetectionFilter implements Filter {
     public void apply(Mat src, Mat dst) {
         Imgproc.cvtColor(src, mGraySrc, Imgproc.COLOR_RGB2GRAY);
         orb.detectAndCompute(mGraySrc, new Mat(), mSceneKeypoints, mSceneDescriptors);
-        mDescriptorMatcher.match(mSceneDescriptors, mReferenceDescriptors, mMatches);
 
+        mDescriptorMatcher.match(mSceneDescriptors, mReferenceDescriptors, mMatches);
         findSceneCorners(src, dst);
     }
 
@@ -136,7 +144,6 @@ public class ImageDetectionFilter implements Filter {
         if (Imgproc.isContourConvex(mIntSceneCorners)) {
             mCandidateSceneCorners.copyTo(mSceneCorners);
         }
-
         draw(src, dst);
     }
 
@@ -170,8 +177,10 @@ public class ImageDetectionFilter implements Filter {
         Imgproc.line(dst, new Point(mSceneCorners.get(0, 0)), new Point(mSceneCorners.get(1, 0)), ScalarColors.RED, 10);
         Imgproc.line(dst, new Point(mSceneCorners.get(1, 0)), new Point(mSceneCorners.get(2, 0)), ScalarColors.RED, 10);
         Imgproc.line(dst, new Point(mSceneCorners.get(2, 0)), new Point(mSceneCorners.get(3, 0)), ScalarColors.RED, 10);
-        Imgproc.line(dst, new Point(mSceneCorners.get(3,0)), new Point(mSceneCorners.get(0, 0)), ScalarColors.RED, 10);
+        Imgproc.line(dst, new Point(mSceneCorners.get(3, 0)), new Point(mSceneCorners.get(0, 0)), ScalarColors.RED, 10);
 
-
+        CameraActivity.scene_corners = mSceneCorners;
     }
+
+
 }

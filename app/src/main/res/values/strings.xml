@@ -1,7 +1,7 @@
 <resources>
     <string name="app_name">Android_Opencv</string>
 
-    <string name="menu_next_image_detection_filter">Next Tracker</string>
+    <string name="menu_next_image_detection_filter">NORMAL</string>
     <string name="menu_next_camera">NEXT CAM</string>
     <string name="menu_take_photo">TAKE PHOTO</string>
     <string name="menu_image_size">Size</string>
