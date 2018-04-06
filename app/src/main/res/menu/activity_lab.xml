@@ -11,10 +11,16 @@
         android:title="@string/delete"/>
     <item
         android:id="@+id/menu_edit"
-        app:showAsAction="always|withText"
+        app:showAsAction="ifRoom|withText"
         android:title="@string/edit"/>
     <item
         android:id="@+id/menu_share"
-        app:showAsAction="always|withText"
+        app:showAsAction="ifRoom|withText"
         android:title="@string/share"/>
+
+    <item
+        android:id="@+id/upload_server"
+        app:showAsAction="ifRoom|withText"
+        android:title="Upload to Server"/>
+
 </menu>

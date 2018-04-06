@@ -1,0 +1,42 @@
+{
+  "project_info": {
+    "project_number": "200567428506",
+    "firebase_url": "https://opencv-android.firebaseio.com",
+    "project_id": "opencv-android",
+    "storage_bucket": "opencv-android.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:200567428506:android:ee3acff864fb25cb",
+        "android_client_info": {
+          "package_name": "bearpot.com.project1"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "200567428506-i95064mukk4jqqmv69rbnekakiegquce.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCuu2QSecz5jzGWmvaE_ig1QGXDyKp30VU"
+        }
+      ],
+      "services": {
+        "analytics_service": {
+          "status": 1
+        },
+        "appinvite_service": {
+          "status": 1,
+          "other_platform_oauth_client": []
+        },
+        "ads_service": {
+          "status": 2
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

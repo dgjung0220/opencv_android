@@ -108,12 +108,16 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
     private final int DETECTING_MODE= 1;
     private final int TRACKING_MODE = 2;
 
+    // Tracking (camShift)
     private boolean SELECTED_OBJ = false;
-
     private Rect selection = null;
     private Mat hsv, mask, hue, backproj, hist;
     private Rect trackWindow;
     private int trackObject = 0;
+
+    //Firebase Auth
+    //private FirebaseAuth mFirebaseAuth;
+
 
     private boolean hasPermissions(String[] permissions) {
         int result;
@@ -308,6 +312,9 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
 
         switch(item.getItemId()) {
             case R.id.menu_next_image_detection_filter:
+                ActivityCompat.finishAffinity(this);
+                startActivity(new Intent(CameraActivity.this, CameraActivity.class));
+
                 mViewMode = NORMAL_MODE;
                 return true;
 
@@ -344,7 +351,7 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
         if (resultCode == RESULT_OK) {
             switch (requestCode) {
                 case 1112:
-                    sendPicture(data.getData()); //갤러리에서 가져오기
+                    sendPicture(data.getData());
                     break;
 
                 default:
@@ -420,9 +427,6 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
 
     @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
     private void initializeCameraSetting() {
-        /*
-        android.hardware.camera2
-         */
         try {
             CameraManager camManager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
 
@@ -461,9 +465,7 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
     }
 
     @Override
-    public void onCameraViewStopped() {
-
-    }
+    public void onCameraViewStopped() { }
 
     @Override
     public Mat onCameraFrame(CameraBridgeViewBase.CvCameraViewFrame inputFrame) {
@@ -474,6 +476,8 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
                 new NoneFilter().apply(rgba, rgba);
                 Imgproc.rectangle(rgba, A , B, ScalarColors.GREEN,10,8,0);
 
+                SELECTED_OBJ = false;
+
                 if (mIsPhotoPending) {
                     mIsPhotoPending = false;
                     takePhoto(rgba);
@@ -482,16 +486,16 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
                 if (mIsCameraFrontFacing) {
                     Core.flip(rgba, rgba, 1);
                 }
-                break;
+                return rgba;
 
             case DETECTING_MODE:
                 Imgproc.rectangle(rgba, A , B, ScalarColors.GREEN,10,8,0);
                 target_filter.apply(rgba, rgba);
-                break;
+                return rgba;
 
             case TRACKING_MODE:
                 camShift(rgba);
-                break;
+                return rgba;
         }
 
         return rgba;
