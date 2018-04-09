@@ -12,7 +12,7 @@
     android:paddingRight="64dp"
     android:paddingTop="16dp"
     android:paddingBottom="16dp"
-    tools:context=".MainActivity">
+    tools:context=".auth.MainActivity">
 
     <com.google.android.gms.common.SignInButton
         android:id="@+id/sign_in_btn"

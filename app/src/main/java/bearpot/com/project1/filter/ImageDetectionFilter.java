@@ -1,10 +1,7 @@
-package bearpot.com.project1;
+package bearpot.com.project1.filter;
 
 import android.content.Context;
-import android.content.pm.PackageManager;
-import android.util.Log;
 
-import org.opencv.android.Utils;
 import org.opencv.calib3d.Calib3d;
 import org.opencv.core.Core;
 import org.opencv.core.CvType;
@@ -16,7 +13,6 @@ import org.opencv.core.MatOfKeyPoint;
 import org.opencv.core.MatOfPoint;
 import org.opencv.core.MatOfPoint2f;
 import org.opencv.core.Point;
-import org.opencv.core.Scalar;
 import org.opencv.features2d.DescriptorMatcher;
 import org.opencv.features2d.ORB;
 import org.opencv.imgcodecs.Imgcodecs;
@@ -26,6 +22,9 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
+
+import bearpot.com.project1.CameraActivity;
+import bearpot.com.project1.utils.ScalarColors;
 
 /**
  * Created by dg.jung on 2018-03-23.
@@ -47,13 +46,7 @@ public class ImageDetectionFilter implements Filter {
     private final MatOfPoint mIntSceneCorners = new MatOfPoint();
 
     private final Mat mGraySrc = new Mat();
-    private final Mat mWarpedSrc = new Mat();
-
     private final MatOfDMatch mMatches = new MatOfDMatch();
-    private LinkedList<MatOfDMatch> m_knnMatches;
-
-    private final Mat rough_homography = new Mat();
-    private final Mat refine_homography = new Mat();
 
     private ORB orb = ORB.create();
     private final DescriptorMatcher mDescriptorMatcher = DescriptorMatcher.create(DescriptorMatcher.BRUTEFORCE_HAMMINGLUT);
@@ -62,7 +55,6 @@ public class ImageDetectionFilter implements Filter {
         mReferenceImage = Imgcodecs.imread(filePath);
 
         orb.setMaxFeatures(1000);
-        m_knnMatches = new LinkedList<>();
 
         final Mat referenceImageGray = new Mat();
         Imgproc.cvtColor(mReferenceImage, referenceImageGray, Imgproc.COLOR_BGR2GRAY);
@@ -106,8 +98,10 @@ public class ImageDetectionFilter implements Filter {
 
         if (min_dist > 50.0) {
             mSceneCorners.create(0,0, mSceneCorners.type());
+            CameraActivity.scene_corners = null;
             return;
-        } else if (min_dist > 25.0) {
+        } else if (min_dist > 20.0) {
+            CameraActivity.scene_corners = null;
             // target lost, but still close;
             return;
         }
@@ -125,6 +119,7 @@ public class ImageDetectionFilter implements Filter {
         }
 
         if (goodReferencePointsList.size() < 4 || goodScenePointsList.size() < 4) {
+            CameraActivity.scene_corners = null;
             return;
         }
 
@@ -170,14 +165,14 @@ public class ImageDetectionFilter implements Filter {
 
             Mat dstROI = dst.submat(0, height, 0, width);
             Imgproc.resize(mReferenceImage, dstROI, dstROI.size(), 0.0, 0.0, Imgproc.INTER_AREA);
-
             return;
         }
 
-        Imgproc.line(dst, new Point(mSceneCorners.get(0, 0)), new Point(mSceneCorners.get(1, 0)), ScalarColors.RED, 10);
+        /*Imgproc.line(dst, new Point(mSceneCorners.get(0, 0)), new Point(mSceneCorners.get(1, 0)), ScalarColors.RED, 10);
         Imgproc.line(dst, new Point(mSceneCorners.get(1, 0)), new Point(mSceneCorners.get(2, 0)), ScalarColors.RED, 10);
         Imgproc.line(dst, new Point(mSceneCorners.get(2, 0)), new Point(mSceneCorners.get(3, 0)), ScalarColors.RED, 10);
         Imgproc.line(dst, new Point(mSceneCorners.get(3, 0)), new Point(mSceneCorners.get(0, 0)), ScalarColors.RED, 10);
+        */
 
         CameraActivity.scene_corners = mSceneCorners;
     }

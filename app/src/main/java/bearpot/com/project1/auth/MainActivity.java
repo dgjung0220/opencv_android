@@ -1,4 +1,4 @@
-package bearpot.com.project1;
+package bearpot.com.project1.auth;
 
 import android.content.Intent;
 import android.support.annotation.NonNull;
@@ -21,6 +21,9 @@ import com.google.firebase.auth.AuthResult;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.auth.GoogleAuthProvider;
+
+import bearpot.com.project1.CameraActivity;
+import bearpot.com.project1.R;
 
 
 public class MainActivity extends AppCompatActivity implements GoogleApiClient.OnConnectionFailedListener {

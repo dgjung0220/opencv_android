@@ -34,20 +34,32 @@ import android.view.Window;
 import android.view.WindowManager;
 import android.widget.Toast;
 
+import com.google.android.gms.tasks.OnFailureListener;
+import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.storage.FirebaseStorage;
+import com.google.firebase.storage.StorageReference;
+import com.google.firebase.storage.UploadTask;
+
 import org.opencv.android.BaseLoaderCallback;
 import org.opencv.android.CameraBridgeViewBase;
 import org.opencv.android.JavaCameraView;
 import org.opencv.android.LoaderCallbackInterface;
 import org.opencv.android.OpenCVLoader;
 import org.opencv.core.Core;
+import org.opencv.core.KeyPoint;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfFloat;
 import org.opencv.core.MatOfInt;
+import org.opencv.core.MatOfKeyPoint;
 import org.opencv.core.Point;
 import org.opencv.core.Rect;
 import org.opencv.core.RotatedRect;
 import org.opencv.core.Scalar;
 import org.opencv.core.TermCriteria;
+import org.opencv.features2d.ORB;
 import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
 import org.opencv.video.Video;
@@ -57,6 +69,15 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
+
+import bearpot.com.project1.auth.MainActivity;
+import bearpot.com.project1.filter.Filter;
+import bearpot.com.project1.filter.ImageDetectionFilter;
+import bearpot.com.project1.filter.NoneFilter;
+import bearpot.com.project1.utils.ScalarColors;
+import bearpot.com.project1.utils.Utils;
+import bearpot.com.project1.vo.ImageDescription;
+import bearpot.com.project1.vo.Target;
 
 
 /**
@@ -73,8 +94,6 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
     private static final String STATE_IMAGE_SIZE_INDEX = "imageSizeIndex";
 
     private static final int MENU_GROUP_ID_SIZE = 2;
-
-    private Filter[] mImageDetectionFilters;
 
     private int mImageDetectionFilterIndex;
     private int mCameraIndex;
@@ -115,9 +134,22 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
     private Rect trackWindow;
     private int trackObject = 0;
 
-    //Firebase Auth
-    //private FirebaseAuth mFirebaseAuth;
+    private int count = 0;
 
+    //Firebase Auth
+    private FirebaseAuth mFirebaseAuth;
+    private FirebaseUser mFirebaseUser;
+    private static FirebaseDatabase mFirebaseDatabase;
+    private static FirebaseStorage storage;
+    private static StorageReference storageRef;
+
+    static {
+        mFirebaseDatabase = FirebaseDatabase.getInstance();
+        mFirebaseDatabase.setPersistenceEnabled(true);
+
+        storage = FirebaseStorage.getInstance("gs://opencv-android.appspot.com");
+        storageRef = storage.getReference();
+    }
 
     private boolean hasPermissions(String[] permissions) {
         int result;
@@ -152,32 +184,6 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
 
                         mViewMode = DETECTING_MODE;
                     }
-
-                    /*final Filter starryNight;
-                    try {
-                        starryNight = new ImageDetectionFilter(CameraActivity.this, "/mnt/sdcard/Assets/starry_night.jpg");
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                        break;
-                    }
-
-                    final Filter portrait;
-                    try {
-                        portrait = new ImageDetectionFilter(CameraActivity.this, "/mnt/sdcard/Assets/self_portrait.jpg");
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                        break;
-                    }
-
-                    final Filter book;
-                    try {
-                        book = new ImageDetectionFilter(CameraActivity.this, "/mnt/sdcard/Assets/book.jpg");
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                        break;
-                    }*/
-                    //mImageDetectionFilters = new Filter[] {new NoneFilter()};
-
                     break;
                 default:
                     super.onManagerConnected(status);
@@ -212,6 +218,15 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
             mCameraIndex = 0;
             mImageSizeIndex = 0;
             mImageDetectionFilterIndex = 0;
+        }
+
+        mFirebaseAuth = FirebaseAuth.getInstance();
+        mFirebaseUser = mFirebaseAuth.getCurrentUser();
+
+        if (mFirebaseUser == null) {
+            startActivity(new Intent(CameraActivity.this, MainActivity.class));
+            finish();
+            return;
         }
 
         initializeCameraSetting();
@@ -380,8 +395,8 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
         }
         mViewMode = DETECTING_MODE;
 
-        //Bitmap bitmap = BitmapFactory.decodeFile(imagePath);//경로를 통해 비트맵으로 전환
-        //ivImage.setImageBitmap(rotate(bitmap, exifDegree));//이미지 뷰에 비트맵 넣기
+        //Bitmap bitmap = BitmapFactory.decodeFile(imagePath); // 경로를 통해 비트맵으로 전환
+        //ivImage.setImageBitmap(rotate(bitmap, exifDegree)); // 이미지 뷰에 비트맵 넣기
     }
 
     private int exifOrientationToDegrees(int exifOrientation) {
@@ -489,8 +504,18 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
                 return rgba;
 
             case DETECTING_MODE:
+
                 Imgproc.rectangle(rgba, A , B, ScalarColors.GREEN,10,8,0);
-                target_filter.apply(rgba, rgba);
+
+                if (count % 2 == 0) {
+                    target_filter.apply(new Mat(rgba, roi), new Mat(rgba, roi));
+                }
+                count++;
+
+                if (scene_corners != null) {
+                    Imgproc.putText(rgba, "Test", Utils.addPoints(new Point(scene_corners.get(0,0)), new Point(roi.x , roi.y)), Core.FONT_HERSHEY_PLAIN, 10.0, ScalarColors.BLACK);
+                }
+
                 return rgba;
 
             case TRACKING_MODE:
@@ -553,7 +578,10 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
         final String appName = getString(R.string.app_name);
         final String galleryPath = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).toString();
         final String albumPath = galleryPath + File.separator + appName;
-        final String photoPath = albumPath + File.separator + currentTimeMillis + LabActivity.PHOTO_FILE_EXTENSION;
+
+        final String imageName = File.separator + currentTimeMillis + LabActivity.PHOTO_FILE_EXTENSION;
+        final String photoPath = albumPath + imageName;
+
 
         final ContentValues values = new ContentValues();
         values.put(MediaStore.MediaColumns.DATA, photoPath);
@@ -576,11 +604,14 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
             onTakePhotoFailed();
         }
 
-        /* Not Cropped.
+        /* if not cropped.
         if (!Imgcodecs.imwrite(photoPath, mBgr)) {
             Log.e(TAG, "Failed to save photo to " + photoPath);
             onTakePhotoFailed();
         }*/
+
+        saveTargets(photoPath, imageName);
+        //test(photoPath);
 
         Uri uri;
         try {
@@ -616,6 +647,52 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
         });
     }
 
+    private void saveTargets(final String photoPath, final String imageName) {
+
+        Uri file = Uri.fromFile(new File(photoPath));
+        StorageReference ref = storageRef.child("images/"+file.getLastPathSegment());
+        UploadTask uploadTask = ref.putFile(file);
+
+        // Register observers to listen for when the download is done or if it fails
+        uploadTask.addOnFailureListener(new OnFailureListener() {
+            @Override
+            public void onFailure(@NonNull Exception exception) {
+                // Handle unsuccessful uploads
+            }
+        }).addOnSuccessListener(new OnSuccessListener<UploadTask.TaskSnapshot>() {
+            @Override
+            public void onSuccess(UploadTask.TaskSnapshot taskSnapshot) {
+                // taskSnapshot.getMetadata() contains file metadata such as size, content-type, and download URL.
+                Uri downloadUrl = taskSnapshot.getDownloadUrl();
+
+                ImageDescription imagedesc = Utils.calculateKpAndDescriptor(photoPath);
+                Target targetVo = new Target(imageName, photoPath, downloadUrl.toString(), imagedesc);
+
+                mFirebaseDatabase.getReference("targets/" + mFirebaseUser.getUid())
+                        .push()
+                        .setValue(targetVo)
+                        .addOnSuccessListener(new OnSuccessListener<Void>() {
+                            @Override
+                            public void onSuccess(Void aVoid) {
+                                Log.d(TAG, "Database 저장 완료" + imageName);
+                            }
+                        });
+            }
+        });
+    }
+
+    public void test(String path) {
+        ImageDescription imageDesc = Utils.calculateKpAndDescriptor(path);
+
+        MatOfKeyPoint kp = imageDesc.getKeyPoint();
+        Mat descriptor = imageDesc.getDescriptor();
+
+        Log.d(TAG, kp.toString());
+        Log.d(TAG, descriptor.toString());
+        Log.d(TAG, String.valueOf(kp.size()));
+        Log.d(TAG, String.valueOf(descriptor.size()));
+    }
+
     @Override
     public boolean onTouchEvent(MotionEvent event) {
         if (scene_corners != null) {
@@ -635,19 +712,13 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
                 selection.x = (int) scene_corners.get(0,0)[0];
                 selection.y = (int) scene_corners.get(0,0)[1];
 
-                int width = subsTwoD(new Point(scene_corners.get(0,0)), new Point(scene_corners.get(1,0)));
-                int height = subsTwoD(new Point(scene_corners.get(3,0)), new Point(scene_corners.get(0,0)));
+                int width = Utils.subsTwoD(new Point(scene_corners.get(0,0)), new Point(scene_corners.get(1,0)));
+                int height = Utils.subsTwoD(new Point(scene_corners.get(3,0)), new Point(scene_corners.get(0,0)));
 
                 selection.width = width;
                 selection.height = height;
             }
         }
-
         return super.onTouchEvent(event);
-    }
-
-    public int subsTwoD(Point a, Point b) {
-        int result = (int) Math.abs(Math.sqrt(Math.pow((a.x-b.x),2) + Math.pow((a.y-b.y),2)));
-        return result;
     }
 }

@@ -1,4 +1,4 @@
-package bearpot.com.project1;
+package bearpot.com.project1.filter;
 
 import org.opencv.core.Mat;
 
